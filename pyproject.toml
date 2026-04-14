@@ -1,0 +1,12 @@
+[project]
+name = "automated-prompt-refiner"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "openai>=1.60.0",
+    "python-dotenv>=1.0.0",
+    "datasets>=2.20.0",    # HuggingFace datasets — downloads MS MARCO
+    "rich>=13.0.0",        # pretty terminal output
+]
