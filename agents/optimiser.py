@@ -73,6 +73,18 @@ Rules you must follow:
 5. If the iteration history shows a previous attempt tried a specific fix and it
    did not work, do not repeat that fix.  Try a different approach.
 6. Be concise — a bloated prompt increases latency and cost without helping.
+7. Mind the precision/recall trade-off:
+   - If precision is at or near 1.0 and recall is low, the prompt is TOO STRICT.
+     You must BROADEN the relevance criteria to catch more true positives,
+     even at some cost to precision.  Add more liberal signals (indirect
+     relevance, partial coverage, synonyms, paraphrase).  Do NOT add more
+     restrictive rules — those make recall worse.
+   - If recall is at or near 1.0 and precision is low, the prompt is TOO LOOSE.
+     You must TIGHTEN the criteria to exclude incidental matches.
+   - If both are mid-range, focus on whichever is further from the target.
+8. Do not simply add more rules each iteration.  If the current prompt is
+   longer than the original baseline and metrics are regressing, SIMPLIFY
+   or REWRITE from scratch rather than layering more constraints.
 
 Output format: JSON with exactly these keys:
   new_system   : string — the full new system prompt
@@ -243,9 +255,14 @@ def optimise(
             f"Optimiser returned invalid JSON: {raw[:200]!r}"
         ) from exc
 
+    # The optimiser sometimes omits new_user when it decides not to change
+    # the user template.  In that case, preserve the current user template.
+    new_system = out.get("new_system") or current_system
+    new_user   = out.get("new_user")   or current_user
+
     return (
-        out["new_system"],
-        out["new_user"],
+        new_system,
+        new_user,
         out.get("explanation", ""),
         out.get("hypotheses", []),
     )

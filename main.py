@@ -80,12 +80,26 @@ MAX_ITER = int(os.environ.get("MAX_ITERATIONS", "4"))
 # Sampling cuts runtime ~4x while giving the optimiser enough signal to improve.
 DEV_SAMPLE = int(os.environ.get("DEV_SAMPLE_SIZE", "60"))
 
-# Paths — switch dataset via DATA_DIR env var (e.g. DATA_DIR=data)
-DATA    = ROOT / os.environ.get("DATA_DIR", "data_legal")
+# Paths — switch dataset via DATA_DIR env var
+DATA    = ROOT / os.environ.get("DATA_DIR", "data")
 RESULTS = ROOT / "results"
 
 # Rich console for formatted terminal output
 console = Console()
+
+
+# ── Duration formatting ───────────────────────────────────────────────────────
+
+def _fmt_duration(seconds: float) -> str:
+    """Format a duration as Hh Mm Ss, omitting empty leading units."""
+    total = int(seconds)
+    h, rem = divmod(total, 3600)
+    m, s   = divmod(rem, 60)
+    if h:
+        return f"{h}h {m}m {s}s"
+    if m:
+        return f"{m}m {s}s"
+    return f"{s}s"
 
 
 # ── Resume support ────────────────────────────────────────────────────────────
@@ -172,6 +186,8 @@ def run(start_version: str = "v1") -> None:
                     Ignored when resuming a previous run.
     """
     RESULTS.mkdir(exist_ok=True)
+
+    run_t0 = time.monotonic()
 
     # Try to resume from a previous incomplete run
     previous = _load_previous_run()
@@ -368,6 +384,10 @@ def run(start_version: str = "v1") -> None:
                 _save_prompts(store.all_versions())
                 _save_winning_prompt(prompt)
                 _print_summary(iteration_log)
+                console.print(
+                    f"\n  [bold]Total runtime:[/] "
+                    f"{_fmt_duration(time.monotonic() - run_t0)}"
+                )
                 return  # ← pipeline complete
 
         # ── Not converged — check if we've hit the iteration cap ───────────
@@ -379,7 +399,26 @@ def run(start_version: str = "v1") -> None:
             iteration_log.append(log_record)
             _save_log(iteration_log)
             _save_prompts(store.all_versions())
+
+            # Pick the best iteration by dev F1 and save its prompt as the
+            # winner.  Without this, the optimiser could drift past a good
+            # prompt in later iterations and we'd keep the worse final one.
+            best = max(iteration_log, key=lambda r: r["f1"])
+            best_prompt = store.get(best["version"])
+            console.print(
+                f"\n  [cyan]Best iteration:[/] "
+                f"#{best['iteration']} ({best['version']}) — "
+                f"P={best['precision']:.3f} "
+                f"R={best['recall']:.3f} "
+                f"F1={best['f1']:.3f}"
+            )
+            _save_winning_prompt(best_prompt)
+
             _print_summary(iteration_log)
+            console.print(
+                f"\n  [bold]Total runtime:[/] "
+                f"{_fmt_duration(time.monotonic() - run_t0)}"
+            )
             return
 
         # ── Step 5: Optimise ───────────────────────────────────────────────
@@ -445,7 +484,10 @@ def run(start_version: str = "v1") -> None:
         _save_prompts(store.all_versions())
 
         iter_secs = time.monotonic() - iter_t0
-        console.print(f"\n  [dim]Iteration {iteration} completed in {iter_secs:.0f}s[/]")
+        console.print(
+            f"\n  [dim]Iteration {iteration} completed in "
+            f"{_fmt_duration(iter_secs)}[/]"
+        )
 
 
 # ── Output helpers ────────────────────────────────────────────────────────────
@@ -502,8 +544,16 @@ def _print_summary(log: list[dict]) -> None:
     table.add_column("Canary F1", justify="right")
     table.add_column("Status",    justify="left")
 
+    # Identify the best-F1 iteration so we can flag it in the table
+    best_iter = max(log, key=lambda r: r["f1"])["iteration"] if log else None
+
     for record in log:
-        status = "[green]CONVERGED[/]" if record.get("converged") else ""
+        if record.get("converged"):
+            status = "[green]CONVERGED[/]"
+        elif record["iteration"] == best_iter:
+            status = "[cyan]BEST[/]"
+        else:
+            status = ""
         table.add_row(
             str(record["iteration"]),
             record["version"],

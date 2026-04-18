@@ -55,14 +55,14 @@ class Prompt:
 # ── Built-in starting prompts ─────────────────────────────────────────────────
 
 # v1 — Minimal baseline.
-# Problems we expect: vague role with no criteria — the model must guess what
-# "relevant" means in a legal document review context, leading to inconsistent
-# classifications and likely low precision or recall.
+# Problems we expect: vague role with no criteria beyond what the query says —
+# the model must guess how to apply "relevance", leading to inconsistent calls
+# and typically poor precision (over-labels on surface keyword overlap).
 _V1 = Prompt(
     version="v1",
     system=(
-        "You are a document review attorney. "
-        "For each document, decide if it is relevant to the legal matter."
+        "You are a document reviewer. "
+        "For each document, decide if it is relevant to the query."
     ),
     user=(
         "Query: {query}\n\n"
@@ -75,44 +75,34 @@ _V1 = Prompt(
     notes="Baseline — intentionally minimal to establish a clear starting point.",
 )
 
-# v2 — Adds explicit relevant / not-relevant criteria from the review protocol.
-# This is what a thoughtful review attorney would specify as coding guidelines.
-# Covers the six relevance categories (agreements, communications, invoices,
-# ERCOT approval, Odessa Plant, and project references) plus explicit
-# not-relevant rules to reduce false positives on tangential energy docs.
+# v2 — General document review guidelines.
+# This is what a careful reviewer would specify as coding guidelines:
+# substantive coverage, indirect relevance, and common false-positive traps.
+# These rules apply to any document review task — the specific criteria for
+# each matter live in the {query} field of the input data, not the prompt.
 _V2 = Prompt(
     version="v2",
     system=(
-        "You are a document review attorney classifying documents for "
-        "relevancy in the matter of Luminant / Vistra vs. Cipher.\n\n"
-        "Classify a document as RELEVANT if it meets ANY of these criteria:\n"
-        "  1. Agreements & Negotiations — Any agreements or negotiations "
-        "between Luminant and Cipher, including the Lease Agreement between "
-        "Cipher and La Frontera and the Purchase and Sale Agreement between "
-        "Vistra and Cipher.\n"
-        "  2. Communications — Any communications between Cipher and "
-        "Luminant and/or Vistra regarding the agreements, the data mining "
-        "center, the Odessa Plant, or the Substation, including internal "
-        "communications or those with third parties.\n"
-        "  3. Invoices & Financial Records — Invoices exchanged between "
-        "the parties, or evidence of payments or credits from Luminant "
-        "to Cipher.\n"
-        "  4. ERCOT Approval — Documentation of ERCOT's approval of "
-        "energization and use of the Substation.\n"
-        "  5. Odessa Plant — Documents related to the Odessa Plant, "
-        "specifically those concerning the Plant providing power to "
-        "Cipher's facility.\n"
-        "  6. Project References — Any documents referring to the project "
-        'as "Bitfury" or "Cipher", including misspellings such as '
-        '"Cypher".\n\n'
-        "Classify a document as NOT_RELEVANT if it:\n"
-        "  - Relates to energy or power operations but has no connection "
-        "to Cipher, Luminant, Vistra, the Odessa Plant, or the "
-        "Substation.\n"
-        "  - Mentions general ERCOT matters unrelated to the Substation "
-        "energization approval.\n"
-        "  - Is a routine internal document (HR, IT, general admin) with "
-        "no reference to the parties or subject matter above.\n\n"
+        "You are a document reviewer classifying documents against the "
+        "criteria described in the query.\n\n"
+        "Label a document RELEVANT if it:\n"
+        "  - Substantively addresses the topic(s) described in the query, "
+        "not just a passing mention.\n"
+        "  - Provides evidence, context, or information that would "
+        "meaningfully affect the matter the query is concerned with.\n"
+        "  - Discusses the subject indirectly (synonyms, paraphrase, "
+        "codenames, role-based references) when the link to the query is "
+        "clear from context.\n\n"
+        "Label a document NOT_RELEVANT if it:\n"
+        "  - Mentions query terms only incidentally, without substantive "
+        "coverage of the actual topic.\n"
+        "  - Shares surface keywords but concerns a different subject, "
+        "entity, or context.\n"
+        "  - Is a routine administrative document (HR, IT, general "
+        "operations) with no bearing on the query topic.\n\n"
+        "When uncertain, weigh whether the document meaningfully informs "
+        "the matter the query describes. Err toward not_relevant only when "
+        "the connection is superficial.\n\n"
         "Reply with JSON only — no other text."
     ),
     user=(
@@ -124,9 +114,8 @@ _V2 = Prompt(
         '"reason": "one sentence explaining your decision"}}'
     ),
     notes=(
-        "Added explicit six-category relevance criteria from the review "
-        "protocol and not-relevant rules to reduce false positives on "
-        "tangential energy/ERCOT documents."
+        "General document review guidelines — substantive coverage, "
+        "indirect relevance, and explicit traps for surface keyword overlap."
     ),
 )
 
